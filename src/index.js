@@ -107,6 +107,71 @@ const tools = [
         dryRun: { type: "boolean", description: "Preview what would be cleaned", default: true }
       }
     }
+  },
+  // Phase 2: Performance Monitoring
+  {
+    name: "mac_cpu_usage",
+    description: "Get real-time CPU utilization including per-core usage, load averages, and top CPU-consuming processes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topN: { type: "number", description: "Number of top processes to show (default: 10)", default: 10 }
+      }
+    }
+  },
+  {
+    name: "mac_thermal_status",
+    description: "Check thermal throttling status and CPU temperature on Apple Silicon Macs.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "mac_battery_health",
+    description: "Get battery health information including cycle count, capacity, and charging status.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "mac_system_info",
+    description: "Get comprehensive system information including macOS version, hardware specs, and uptime.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "mac_process_list",
+    description: "List running processes sorted by resource usage (CPU, memory, or name).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sortBy: { type: "string", enum: ["cpu", "memory", "name"], description: "Sort processes by this metric", default: "cpu" },
+        limit: { type: "number", description: "Max processes to return", default: 20 },
+        filter: { type: "string", description: "Filter processes by name (case-insensitive)" }
+      }
+    }
+  },
+  {
+    name: "mac_kill_process",
+    description: "Terminate a process by PID or name. Use with caution.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pid: { type: "number", description: "Process ID to kill" },
+        name: { type: "string", description: "Process name to kill (kills first match)" },
+        force: { type: "boolean", description: "Use SIGKILL instead of SIGTERM", default: false }
+      }
+    }
+  },
+  {
+    name: "mac_startup_items",
+    description: "List and manage login items and launch agents that run at startup.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        showDisabled: { type: "boolean", description: "Include disabled items", default: false }
+      }
+    }
+  },
+  {
+    name: "mac_network_status",
+    description: "Get network interface status, current connections, and bandwidth usage.",
+    inputSchema: { type: "object", properties: {} }
   }
 ];
 
@@ -550,6 +615,258 @@ async function handleDeveloperCleanup({ cleanNodeModules = false, cleanXcode = f
   return results;
 }
 
+// Phase 2: Performance Monitoring Handlers
+async function handleCpuUsage({ topN = 10 }) {
+  try {
+    // Get load averages
+    const { stdout: loadAvg } = await execAsync("sysctl -n vm.loadavg");
+
+    // Get CPU usage summary
+    const { stdout: cpuInfo } = await execAsync("top -l 1 -n 0 | grep 'CPU usage'");
+
+    // Get top CPU processes
+    const { stdout: topProcesses } = await execAsync(`ps aux -r | head -${topN + 1}`);
+
+    // Get core count
+    const { stdout: coreCount } = await execAsync("sysctl -n hw.ncpu");
+    const { stdout: perfCores } = await execAsync("sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo 'N/A'");
+    const { stdout: effCores } = await execAsync("sysctl -n hw.perflevel1.physicalcpu 2>/dev/null || echo 'N/A'");
+
+    return {
+      loadAverages: loadAvg.trim(),
+      cpuUsage: cpuInfo.trim(),
+      totalCores: parseInt(coreCount.trim()),
+      performanceCores: perfCores.trim() !== 'N/A' ? parseInt(perfCores.trim()) : null,
+      efficiencyCores: effCores.trim() !== 'N/A' ? parseInt(effCores.trim()) : null,
+      topProcesses: topProcesses.trim()
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleThermalStatus() {
+  try {
+    // Check thermal state using pmset
+    const { stdout: thermalState } = await execAsync("pmset -g therm 2>/dev/null || echo 'Thermal info not available'");
+
+    // Try to get CPU die temperature (requires sudo or specific tools)
+    let temperature = "Temperature monitoring requires additional tools (e.g., osx-cpu-temp)";
+    try {
+      const { stdout } = await execAsync("osx-cpu-temp 2>/dev/null");
+      temperature = stdout.trim();
+    } catch (e) {}
+
+    // Check if thermal throttling is active
+    const isThrottling = thermalState.includes("CPU_Speed_Limit") && !thermalState.includes("100");
+
+    return {
+      thermalState: thermalState.trim(),
+      temperature,
+      isThrottling,
+      recommendation: isThrottling ? "System is thermal throttling. Consider improving ventilation or reducing workload." : "Thermal status normal."
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleBatteryHealth() {
+  try {
+    // Get battery info using system_profiler
+    const { stdout: batteryInfo } = await execAsync("system_profiler SPPowerDataType 2>/dev/null");
+
+    // Parse key metrics
+    const cycleCount = batteryInfo.match(/Cycle Count: (\d+)/)?.[1] || "N/A";
+    const condition = batteryInfo.match(/Condition: (.+)/)?.[1]?.trim() || "N/A";
+    const maxCapacity = batteryInfo.match(/Maximum Capacity: (\d+%)/)?.[1] || "N/A";
+    const charging = batteryInfo.includes("Charging: Yes");
+    const fullyCharged = batteryInfo.includes("Fully Charged: Yes");
+    const powerSource = batteryInfo.includes("Connected: Yes") ? "AC Power" : "Battery";
+
+    // Get current charge level
+    const { stdout: pmsetOutput } = await execAsync("pmset -g batt");
+    const chargeLevel = pmsetOutput.match(/(\d+)%/)?.[1] || "N/A";
+
+    return {
+      chargeLevel: `${chargeLevel}%`,
+      cycleCount: parseInt(cycleCount) || cycleCount,
+      condition,
+      maxCapacity,
+      isCharging: charging,
+      isFullyCharged: fullyCharged,
+      powerSource,
+      healthNote: parseInt(maxCapacity) < 80 ? "Battery capacity significantly degraded. Consider replacement." :
+                  parseInt(maxCapacity) < 90 ? "Battery showing some wear." : "Battery health good."
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleSystemInfo() {
+  try {
+    const info = {};
+
+    // macOS version
+    const { stdout: osVersion } = await execAsync("sw_vers");
+    info.macOS = osVersion.trim().replace(/\n/g, ", ");
+
+    // Hardware model
+    const { stdout: model } = await execAsync("sysctl -n hw.model");
+    info.model = model.trim();
+
+    // Chip
+    const { stdout: chip } = await execAsync("sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon'");
+    info.chip = chip.trim();
+
+    // Memory
+    const { stdout: memory } = await execAsync("sysctl -n hw.memsize");
+    info.memoryGB = (parseInt(memory) / 1024 / 1024 / 1024).toFixed(0) + " GB";
+
+    // Uptime
+    const { stdout: uptime } = await execAsync("uptime");
+    info.uptime = uptime.trim();
+
+    // Disk info
+    const { stdout: disk } = await execAsync("df -h / | tail -1");
+    const diskParts = disk.trim().split(/\s+/);
+    info.disk = { total: diskParts[1], used: diskParts[2], available: diskParts[3], percentUsed: diskParts[4] };
+
+    // User
+    const { stdout: user } = await execAsync("whoami");
+    info.currentUser = user.trim();
+
+    // Hostname
+    const { stdout: hostname } = await execAsync("hostname");
+    info.hostname = hostname.trim();
+
+    return info;
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleProcessList({ sortBy = "cpu", limit = 20, filter = "" }) {
+  try {
+    let sortFlag = "-r"; // CPU by default
+    if (sortBy === "memory") sortFlag = "-m";
+    else if (sortBy === "name") sortFlag = "";
+
+    let cmd = `ps aux ${sortFlag} | head -${limit + 1}`;
+    if (filter) {
+      cmd = `ps aux ${sortFlag} | grep -i "${filter}" | head -${limit}`;
+    }
+
+    const { stdout } = await execAsync(cmd);
+
+    // Parse into structured format
+    const lines = stdout.trim().split("\n");
+    const header = lines[0];
+    const processes = lines.slice(1).map(line => {
+      const parts = line.split(/\s+/);
+      return {
+        user: parts[0],
+        pid: parseInt(parts[1]),
+        cpu: parseFloat(parts[2]),
+        mem: parseFloat(parts[3]),
+        command: parts.slice(10).join(" ")
+      };
+    });
+
+    return { sortedBy: sortBy, header, processes };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleKillProcess({ pid, name, force = false }) {
+  const signal = force ? "-9" : "-15";
+
+  try {
+    if (pid) {
+      await execAsync(`kill ${signal} ${pid}`);
+      return { success: true, killed: { pid }, signal: force ? "SIGKILL" : "SIGTERM" };
+    } else if (name) {
+      // Find PID by name first
+      const { stdout } = await execAsync(`pgrep -f "${name}" | head -1`);
+      const foundPid = stdout.trim();
+      if (!foundPid) {
+        return { success: false, error: `No process found matching: ${name}` };
+      }
+      await execAsync(`kill ${signal} ${foundPid}`);
+      return { success: true, killed: { pid: parseInt(foundPid), name }, signal: force ? "SIGKILL" : "SIGTERM" };
+    } else {
+      return { success: false, error: "Must provide either pid or name" };
+    }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function handleStartupItems({ showDisabled = false }) {
+  const items = { loginItems: [], launchAgents: [], launchDaemons: [] };
+
+  try {
+    // User launch agents
+    const { stdout: userAgents } = await execAsync(`ls -la ~/Library/LaunchAgents/*.plist 2>/dev/null || echo ''`);
+    if (userAgents.trim()) {
+      items.launchAgents = userAgents.trim().split("\n").map(line => {
+        const parts = line.split(/\s+/);
+        return { path: parts[parts.length - 1], type: "user" };
+      });
+    }
+
+    // Check which are loaded
+    const { stdout: loadedAgents } = await execAsync("launchctl list 2>/dev/null | head -30");
+    items.loadedAgents = loadedAgents.trim();
+
+    // System launch agents (that affect current user)
+    const { stdout: systemAgents } = await execAsync(`ls /Library/LaunchAgents/*.plist 2>/dev/null | head -10 || echo ''`);
+    if (systemAgents.trim()) {
+      items.systemAgents = systemAgents.trim().split("\n");
+    }
+
+    return items;
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleNetworkStatus() {
+  try {
+    const status = {};
+
+    // Get active network interfaces
+    const { stdout: interfaces } = await execAsync("ifconfig | grep -E '^[a-z]|inet ' | head -20");
+    status.interfaces = interfaces.trim();
+
+    // Get current WiFi network
+    try {
+      const { stdout: wifi } = await execAsync("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null | grep -E 'SSID|BSSID|channel|RSSI'");
+      status.wifi = wifi.trim();
+    } catch (e) { status.wifi = "Not connected to WiFi"; }
+
+    // Get external IP
+    try {
+      const { stdout: externalIp } = await execAsync("curl -s --max-time 2 ifconfig.me");
+      status.externalIp = externalIp.trim();
+    } catch (e) { status.externalIp = "Unable to determine"; }
+
+    // Get DNS servers
+    const { stdout: dns } = await execAsync("scutil --dns | grep 'nameserver' | head -5");
+    status.dnsServers = dns.trim();
+
+    // Get active connections count
+    const { stdout: connCount } = await execAsync("netstat -an | grep ESTABLISHED | wc -l");
+    status.activeConnections = parseInt(connCount.trim());
+
+    return status;
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
 // Request handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
@@ -568,6 +885,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "mac_full_cleanup_workflow": result = await handleFullCleanupWorkflow(args || {}); break;
     case "mac_analyze_library": result = await handleAnalyzeLibrary(); break;
     case "mac_developer_cleanup": result = await handleDeveloperCleanup(args || {}); break;
+    // Phase 2: Performance Monitoring
+    case "mac_cpu_usage": result = await handleCpuUsage(args || {}); break;
+    case "mac_thermal_status": result = await handleThermalStatus(); break;
+    case "mac_battery_health": result = await handleBatteryHealth(); break;
+    case "mac_system_info": result = await handleSystemInfo(); break;
+    case "mac_process_list": result = await handleProcessList(args || {}); break;
+    case "mac_kill_process": result = await handleKillProcess(args || {}); break;
+    case "mac_startup_items": result = await handleStartupItems(args || {}); break;
+    case "mac_network_status": result = await handleNetworkStatus(); break;
     default: throw new Error(`Unknown tool: ${name}`);
   }
 

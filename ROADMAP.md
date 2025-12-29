@@ -25,7 +25,7 @@ A comprehensive MCP tool server for MacBook Pro optimization, focusing on disk m
 
 ---
 
-## Phase 2: Performance Monitoring
+## Phase 2: Performance Monitoring (Current)
 
 ### Memory
 - [x] `mac_memory_status` - Current memory pressure and top processes
@@ -34,15 +34,19 @@ A comprehensive MCP tool server for MacBook Pro optimization, focusing on disk m
 - [ ] `mac_memory_hogs` - Identify processes with memory leaks
 
 ### CPU
-- [ ] `mac_cpu_usage` - Real-time CPU utilization per core
-- [ ] `mac_thermal_status` - Thermal throttling detection
-- [ ] `mac_process_monitor` - Track resource-intensive processes
-- [ ] `mac_efficiency_cores` - Monitor efficiency vs performance core usage (Apple Silicon)
+- [x] `mac_cpu_usage` - Real-time CPU utilization per core (includes efficiency/performance core breakdown)
+- [x] `mac_thermal_status` - Thermal throttling detection
+- [x] `mac_process_list` - List processes sorted by resource usage
+- [x] `mac_kill_process` - Terminate processes by PID or name
 
 ### Battery & Power
-- [ ] `mac_battery_health` - Battery health and cycle count
-- [ ] `mac_power_status` - Power source and charging status
+- [x] `mac_battery_health` - Battery health, cycle count, capacity, and charging status
 - [ ] `mac_energy_hogs` - Apps consuming excessive energy
+
+### System
+- [x] `mac_system_info` - Comprehensive system info (macOS, hardware, uptime)
+- [x] `mac_startup_items` - List login items and launch agents
+- [x] `mac_network_status` - Network interfaces, WiFi, connections
 
 ---
 

@@ -46,14 +46,35 @@ Add to `~/.config/claude/claude_desktop_config.json`:
 
 ## Available Tools
 
+### Disk Management
 | Tool | Description |
 |------|-------------|
 | `mac_disk_usage` | Analyze disk usage and categorize largest consumers |
 | `mac_cleanup_caches` | Clean various caches (go, brew, npm, pip, browser) |
 | `mac_cleanup_docker` | Prune Docker resources |
 | `mac_go_cache_status` | Check Go build cache size and provide recommendations |
-| `mac_memory_status` | Show memory pressure and swap usage |
 | `mac_cleanup_recommendations` | Get personalized cleanup recommendations |
+| `mac_empty_trash` | Empty system trash |
+| `mac_full_cleanup_workflow` | Run comprehensive automated cleanup |
+| `mac_analyze_library` | Deep ~/Library folder analysis |
+| `mac_developer_cleanup` | Clean developer artifacts (node_modules, Xcode, pyenv) |
+
+### Performance Monitoring
+| Tool | Description |
+|------|-------------|
+| `mac_memory_status` | Show memory pressure and swap usage |
+| `mac_cpu_usage` | CPU utilization with core breakdown |
+| `mac_thermal_status` | Thermal throttling detection |
+| `mac_battery_health` | Battery health, cycle count, capacity |
+| `mac_system_info` | System info (macOS, hardware, uptime) |
+
+### Process & System
+| Tool | Description |
+|------|-------------|
+| `mac_process_list` | List processes by resource usage |
+| `mac_kill_process` | Terminate processes by PID or name |
+| `mac_startup_items` | Manage login items and launch agents |
+| `mac_network_status` | Network interfaces and connectivity |
 
 ## Go Cache Management
 
