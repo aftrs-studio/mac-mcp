@@ -1,0 +1,17 @@
+{
+  "name": "mac-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP tool server for optimizing MacBook arm64 performance",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": ["mcp", "macos", "performance", "disk-cleanup", "cache-management"],
+  "author": "aftrs-studio",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0"
+  }
+}
