@@ -1,0 +1,33 @@
+name: Claude Security Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  id-token: write
+
+jobs:
+  security-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          trigger_phrase: "@claude-security"
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Focus exclusively on security concerns:
+            - Injection vulnerabilities (SQL, command, XSS)
+            - Authentication and authorization issues
+            - Secret/credential exposure
+            - Insecure dependencies
+            - Path traversal and file access
+            - Race conditions
+            Only comment if you find actual security issues. Do not comment on style or general code quality.
